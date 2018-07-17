@@ -7,11 +7,77 @@
 #endif /* DEBUG */
 
 #define LG_BUFFER_ALLOC 255
+#define LG_CAT_MAX 32
+#define LG_CB_MAX 8
+#define LG_PRINT_BUFFER_ALLOC 255
+
+static struct tagbstring lg_ansi_color_strs[7] = {
+   /* GRAPHICS_COLOR_BLUE        =  9, */ bsStatic( "\x1b[34m" ),
+   /* GRAPHICS_COLOR_GREEN       = 10, */ bsStatic( "\x1b[32m" ),
+   /* GRAPHICS_COLOR_CYAN        = 11, */ bsStatic( "\x1b[36m" ),
+   /* GRAPHICS_COLOR_RED         = 12, */ bsStatic( "\x1b[31m" ),
+   /* GRAPHICS_COLOR_MAGENTA     = 13, */ bsStatic( "\x1b[35m" ),
+   /* GRAPHICS_COLOR_YELLOW      = 14, */ bsStatic( "\x1b[33m" ),
+   /* GRAPHICS_COLOR_WHITE       = 15  */ bsStatic( "\x1b[0m" )
+};
+
+struct LG_TRACE_CAT {
+   enum LG_COLOR color;
+   const char* name;
+   int index;
+};
 
 static bstring lg_buffer = NULL;
+static struct LG_TRACE_CAT lg_categories[LG_CAT_MAX] = { 0 };
+static lg_info_callback lg_info_cb = NULL;
+static int lg_trace_cat_index = -1;
+
+void lg_set_info_cb( lg_info_callback cb ) {
+   lg_info_cb = cb;
+}
+
+int add_lg_trace_cat( const char* name, enum LG_COLOR color ) {
+   int i = 0;
+
+   for( i = 0 ; LG_CAT_MAX > i ; i++ ) {
+      if( NULL != lg_categories[i].name ) {
+         lg_categories[i].color = color;
+         lg_categories[i].name = name;
+         lg_categories[i].index = i;
+         break;
+      }
+   }
+
+   /* Return -1 if we're out of slots. */
+   if( LG_CAT_MAX <= i ) {
+      i = -1;
+   }
+
+   return i;
+}
+
+
+int set_lg_trace_cat( const char* name ) {
+   int i = 0;
+
+   for( i = 0 ; LG_CAT_MAX > i ; i++ ) {
+      if( 0 == strcmp( name, lg_categories[i].name ) ) {
+         break;
+      }
+   }
+
+   /* Return -1 if we're out of slots. */
+   if( LG_CAT_MAX <= i ) {
+      i = -1;
+   } else {
+      lg_trace_cat_index = i;
+   }
+
+   return i;
+}
 
 static void lg_log(
-   void* log, const bstring mod_in, enum LG_COLOR color,
+   void* log, const char* mod_in, enum LG_COLOR color,
    const char* message, va_list varg
 ) {
    int bstr_ret;
@@ -28,16 +94,16 @@ static void lg_log(
 
 #ifdef DEBUG
    scaffold_snprintf(
-      lg_buffer, "%b (%b): ",
-      mod_in, &(str_scaffold_trace[scaffold_trace_path])
+      lg_buffer, "%s (%b): ",
+      lg_categories[lg_trace_cat_index].name
    );
-   scaffold_vsnprintf( lg_buffer, message, varg );
+   lg_vsnprintf( lg_buffer, message, varg );
 #else
    scaffold_snprintf( lg_buffer, "%b: ", mod_in );
-   scaffold_vsnprintf( lg_buffer, message, varg );
+   lg_vsnprintf( lg_buffer, message, varg );
 #endif /* DEBUG */
 
-   scaffold_colorize( lg_buffer, color );
+   lg_colorize( lg_buffer, color );
 
    fprintf( log, "%s", bdata( lg_buffer ) );
 
@@ -45,32 +111,23 @@ cleanup:
    return;
 }
 
-void lg_debug( const bstring mod_in, const char* message, ... ) {
+void lg_debug( const char* mod_in, const char* message, ... ) {
 #ifdef DEBUG
    va_list varg;
-   LG_COLOR color;
+
 #ifndef HEATSHRINK_DEBUGGING_LOGS
-   const char* mod_in_c = NULL;
-
-   mod_in_c = bdata( mod_in );
-
    /* How's this for an innovative solution to keeping it C89? */
-   if( 0 == strncmp( "hs", mod_in_c, 2 ) ) {
+   if( 0 == strncmp( "hs", mod_in, 2 ) ) {
       goto cleanup;
-   } if( 0 == strncmp( "syncbuff", mod_in_c, 8 ) ) {
+   } if( 0 == strncmp( "syncbuff", mod_in, 8 ) ) {
       goto cleanup;
    }
-#endif /* HEATSHRINK_DEBUGGING_LOGS */
-
-   if( SCAFFOLD_TRACE_SERVER == scaffold_trace_path ) {
-      color = LG_COLOR_MAGENTA;
-   } else {
-      color = LG_COLOR_CYAN;
-   }
+#endif /* !HEATSHRINK_DEBUGGING_LOGS */
 
    va_start( varg, message );
-   scaffold_log(
-      scaffold_log_handle_err, mod_in, color, message, varg
+   lg_log(
+      lg_handle_err, mod_in, lg_categories[lg_trace_cat_index].color,
+      message, varg
    );
    va_end( varg );
 
@@ -80,63 +137,64 @@ cleanup:
 }
 
 void lg_color(
-   const bstring mod_in, LG_COLOR color, const char* message, ...
+   const char* mod_in, enum LG_COLOR color, const char* message, ...
 ) {
 #ifdef DEBUG
    va_list varg;
    va_start( varg, message );
-   scaffold_log( scaffold_log_handle_err, mod_in, color, message, varg );
+   lg_log( lg_handle_err, mod_in, color, message, varg );
    va_end( varg );
    return;
 #endif /* DEBUG */
 }
 
-void lg_info( const bstring mod_in, const char* message, ... ) {
+void lg_info( const char* mod_in, const char* message, ... ) {
    va_list varg;
    int bstr_ret;
 
    if( NULL == lg_buffer ) {
-      lg_buffer = bfromcstralloc( SCAFFOLD_PRINT_BUFFER_ALLOC, "" );
+      lg_buffer = bfromcstralloc( LG_PRINT_BUFFER_ALLOC, "" );
    }
-   scaffold_assert( NULL != lg_buffer );
+#ifdef DEBUG
+   assert( NULL != lg_buffer );
+#endif /* DEBUG */
 
    bstr_ret = btrunc( lg_buffer, 0 );
    lgc_nonzero( bstr_ret );
 
    va_start( varg, message );
-   scaffold_vsnprintf( lg_buffer, message, varg );
+   lg_vsnprintf( lg_buffer, message, varg );
    va_end( varg );
 
 #ifdef DEBUG
-   fprintf( scaffold_log_handle, "%s: %s",
-      bdata( mod_in ), bdata( lg_buffer ) );
+   fprintf( lg_handle_out, "%s: %s", mod_in, bdata( lg_buffer ) );
 #endif /* DEBUG */
 
-#ifndef DISABLE_BACKLOG
-   backlog_system( lg_buffer );
-#endif /* DISABLE_BACKLOG */
+   if( NULL != lg_info_cb ) {
+      lg_info_cb( lg_buffer );
+   }
 
 cleanup:
    return;
 }
 
-void lg_error( const bstring mod_in, const char* message, ... ) {
+void lg_error( const char* mod_in, const char* message, ... ) {
    va_list varg;
 #ifdef DEBUG
    va_start( varg, message );
-   scaffold_log(
-      scaffold_log_handle_err, mod_in, LG_COLOR_RED, message, varg
+   lg_log(
+      lg_handle_err, mod_in, LG_COLOR_RED, message, varg
    );
    va_end( varg );
 #endif /* DEBUG */
 }
 
-void lg_warning( const bstring mod_in, const char* message, ... ) {
+void lg_warning( const char* mod_in, const char* message, ... ) {
    va_list varg;
 #ifdef DEBUG
    va_start( varg, message );
-   scaffold_log(
-      scaffold_log_handle_err, mod_in, LG_COLOR_YELLOW, message, varg
+   lg_log(
+      lg_handle_err, mod_in, LG_COLOR_YELLOW, message, varg
    );
    va_end( varg );
 #endif /* DEBUG */
@@ -241,9 +299,7 @@ cleanup:
    return;
 }
 
-#ifdef USE_COLORED_CONSOLE
-
-void scaffold_colorize( bstring str, LG_COLOR color ) {
+void lg_colorize( bstring str, enum LG_COLOR color ) {
    bstring str_color = NULL;
    int color_i = (int)color;
    int bstr_ret;
@@ -254,13 +310,13 @@ void scaffold_colorize( bstring str, LG_COLOR color ) {
    if( 0 > color_i || 7 <= color_i ) {
       goto cleanup;
    }
-   str_color = &(ansi_color_strs[color_i]);
+   str_color = &(lg_ansi_color_strs[color_i]);
 
    bstr_ret = binsert( str, 0, str_color, '\0' );
    if( 0 != bstr_ret ) {
       goto cleanup;
    }
-   bstr_ret = bconcat( str, &(ansi_color_strs[LG_COLOR_WHITE - 9]) );
+   bstr_ret = bconcat( str, &(lg_ansi_color_strs[LG_COLOR_WHITE - 9]) );
    if( 0 != bstr_ret ) {
       goto cleanup;
    }
