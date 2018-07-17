@@ -2,7 +2,15 @@
 #ifndef GOKIBURI_H
 #define GOKIBURI_H
 
+#include <stdio.h>
 #include <bstrlib.h>
+
+typedef void (*lg_info_callback)(bstring);
+
+enum LG_BOOL {
+   LG_FALSE = 0,
+   LG_TRUE = 1
+};
 
 enum LG_COLOR {
    LG_COLOR_DARK_BLUE   =  1,
@@ -24,133 +32,145 @@ enum LG_COLOR {
 
 enum LGC_ERROR {
    LGC_ERROR_NONE,
-   LGC_ERROR_NULLPO
+   LGC_ERROR_NULLPO,
+   LGC_ERROR_NONZERO,
+   LGC_ERROR_OUTOFBOUNDS,
+   LGC_ERROR_ZERO
 };
 
-#define lgc_silence() lgc_error_silent = TRUE;
-#define lgc_unsilence() lgc_error_silent = FALSE;
+#define lgc_silence() lgc_error_silent = LG_TRUE;
+#define lgc_unsilence() lgc_error_silent = LG_FALSE;
+
+#define lgc_false( condition, msg ) \
+    if( !condition ) { \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "False on line: %d: %s\n", __LINE__, msg ); \
+        } \
+        goto cleanup; \
+    }
 
 #define lgc_null_msg( pointer, message ) \
     if( NULL == pointer ) { \
-        scaffold_error = LGC_ERROR_NULLPO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, \
-               "Scaffold: Null pointer on line: %d: %s\n", \
+        lgc_error = LGC_ERROR_NULLPO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, \
+               "Null pointer on line: %d: %s\n", \
                __LINE__, message ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_null_warning( pointer ) \
     if( NULL == pointer ) { \
-        scaffold_error = LGC_ERROR_NULLPO; \
-        if( TRUE != scaffold_warning_silent ) { \
-            scaffold_print_warning( \
-               &module, "Scaffold: Null pointer on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_NULLPO; \
+        if( LG_TRUE != scaffold_warning_silent ) { \
+            lg_warning( \
+               __FILE__, "Null pointer on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_null( pointer ) \
     if( NULL == pointer ) { \
-        scaffold_error = LGC_ERROR_NULLPO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, "Scaffold: Null pointer on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_NULLPO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "Null pointer on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_null_continue( pointer ) \
     if( NULL == pointer ) { \
-        scaffold_error = LGC_ERROR_NULLPO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, "Scaffold: Null pointer on line: %d\n", __LINE__ ); \
-            scaffold_print_debug( &module, "Continuing loop..." ); \
+        lgc_error = LGC_ERROR_NULLPO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "Null pointer on line: %d\n", __LINE__ ); \
+            scaffold_print_debug( __FILE__, "Continuing loop..." ); \
         } \
         continue; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_not_null( pointer ) \
     if( NULL != pointer ) { \
-        scaffold_error = LGC_ERROR_NOT_NULLPO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, \
-               "Scaffold: Non-null pointer on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_NOT_NULLPO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, \
+               "Non-null pointer on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_bounds( index, bound ) \
     if( index >= bound ) { \
-        scaffold_error = LGC_ERROR_OUTOFBOUNDS; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, "Scaffold: Out of bounds on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_OUTOFBOUNDS; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "Out of bounds on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_negative( value ) \
     if( 0 > value ) { \
-        scaffold_error = LGC_ERROR_NEGATIVE; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, "Scaffold: Bad negative on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_NEGATIVE; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "Bad negative on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_nonzero( value ) \
     if( 0 != value ) { \
-        scaffold_error = LGC_ERROR_NONZERO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, "Scaffold: Nonzero error on line: %d\n", __LINE__ ); \
+        lgc_error = LGC_ERROR_NONZERO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, "Nonzero error on line: %d\n", __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_zero_msg( value, message ) \
     if( 0 == value ) { \
-        scaffold_error = LGC_ERROR_ZERO; \
-        if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, \
-               "Scaffold: Zero error on line: %d: %s\n", __LINE__, message ); \
+        lgc_error = LGC_ERROR_ZERO; \
+        if( LG_TRUE != lgc_error_silent ) { \
+            lg_error( \
+               __FILE__, \
+               "Zero error on line: %d: %s\n", __LINE__, message ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 
 #define lgc_zero_against_warning( last, value, msg ) \
     if( 0 == value && LGC_ERROR_ZERO != last ) { \
         last = LGC_ERROR_ZERO; \
-        if( TRUE != scaffold_warning_silent ) { \
-            scaffold_print_warning( \
-               &module, \
-               "Scaffold: Zero warning on line: %d: %s\n", __LINE__, msg ); \
+        if( LG_TRUE != scaffold_warning_silent ) { \
+            lg_warning( \
+               __FILE__, \
+               "Zero warning on line: %d: %s\n", __LINE__, msg ); \
         } \
         goto cleanup; \
     } else if( LGC_ERROR_ZERO != last ) { \
@@ -161,9 +181,9 @@ enum LGC_ERROR {
     if( 0 == value && LGC_ERROR_ZERO != last ) { \
         last = LGC_ERROR_ZERO; \
         if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module, \
-               "Scaffold: Zero error on line: %d: %s\n", __LINE__, msg ); \
+            lg_error( \
+               __FILE__, \
+               "Zero error on line: %d: %s\n", __LINE__, msg ); \
         } \
         goto cleanup; \
     } else if( LGC_ERROR_ZERO != last ) { \
@@ -172,27 +192,47 @@ enum LGC_ERROR {
 
 #define lgc_equal( value1, value2 ) \
     if( value1 != value2 ) { \
-        scaffold_error = LGC_ERROR_UNEQUAL; \
+        lgc_error = LGC_ERROR_UNEQUAL; \
         if( TRUE != lgc_error_silent ) { \
-            scaffold_print_error( \
-               &module,\
+            lg_error( \
+               __FILE__,\
                "Values not equal: %d and %d: error on line: %d\n", \
                value1, value2, __LINE__ ); \
         } \
         goto cleanup; \
     } else { \
-        scaffold_error = LGC_ERROR_NONE; \
+        lgc_error = LGC_ERROR_NONE; \
     }
 
 #define lgc_zero( value, msg ) \
-   lgc_zero_against( scaffold_error, value, msg )
+   lgc_zero_against( lgc_error, value, msg )
 
+void lg_set_info_cb( lg_info_callback cb );
+int add_lg_trace_cat( const char* name, enum LG_COLOR color );
+int set_lg_trace_cat( const char* name );
+void lg_debug( const char* mod_in, const char* message, ... );
+void lg_color(
+   const char* mod_in, enum LG_COLOR color, const char* message, ...
+);
+void lg_info( const char* mod_in, const char* message, ... );
+void lg_error( const char* mod_in, const char* message, ... );
+void lg_warning( const char* mod_in, const char* message, ... );
+void lg_vsnprintf( bstring buffer, const char* message, va_list varg );
+void lg_colorize( bstring str, enum LG_COLOR color );
+
+#ifdef GOKIBURI_C
+enum LGC_ERROR lgc_error = LGC_ERROR_NONE;
+enum LG_BOOL lgc_error_silent = LG_FALSE;
+#else
+extern enum LGC_ERROR lgc_error;
+extern enum LG_BOOL lgc_error_silent;
+#endif /* GOKIBURI_C */
 
 #ifdef USE_LOG_FILE
 #ifndef GOKIBURI_C
 extern FILE* lg_handle_out;
 extern FILE* lg_handle_err;
-#endif /* GOKIBURI_C */
+#endif /* !GOKIBURI_C */
 #else
 #define lg_handle_out stdout
 #define lg_handle_err stderr
