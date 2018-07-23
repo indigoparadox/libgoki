@@ -33,9 +33,12 @@ enum LG_COLOR {
 enum LGC_ERROR {
    LGC_ERROR_NONE,
    LGC_ERROR_NULLPO,
+   LGC_ERROR_NOT_NULLPO,
    LGC_ERROR_NONZERO,
    LGC_ERROR_OUTOFBOUNDS,
-   LGC_ERROR_ZERO
+   LGC_ERROR_ZERO,
+   LGC_ERROR_NEGATIVE,
+   LGC_ERROR_UNEQUAL
 };
 
 #define lgc_silence() lgc_error_silent = LG_TRUE;
@@ -94,7 +97,7 @@ enum LGC_ERROR {
         if( LG_TRUE != lgc_error_silent ) { \
             lg_error( \
                __FILE__, "Null pointer on line: %d\n", __LINE__ ); \
-            scaffold_print_debug( __FILE__, "Continuing loop..." ); \
+            lg_debug( __FILE__, "Continuing loop..." ); \
         } \
         continue; \
     } else { \
@@ -208,8 +211,10 @@ enum LGC_ERROR {
    lgc_zero_against( lgc_error, value, msg )
 
 void lg_set_info_cb( lg_info_callback cb );
-int add_lg_trace_cat( const char* name, enum LG_COLOR color );
-int set_lg_trace_cat( const char* name );
+int lg_add_trace_cat( const char* name, enum LG_COLOR color );
+int lg_set_trace_cat( const char* name );
+const char* lg_get_trace_cat_name();
+bstring lg_trim_filename( bstring path );
 void lg_debug( const char* mod_in, const char* message, ... );
 void lg_color(
    const char* mod_in, enum LG_COLOR color, const char* message, ...
@@ -217,6 +222,7 @@ void lg_color(
 void lg_info( const char* mod_in, const char* message, ... );
 void lg_error( const char* mod_in, const char* message, ... );
 void lg_warning( const char* mod_in, const char* message, ... );
+void lg_snprintf( bstring buffer, const char* message, ... );
 void lg_vsnprintf( bstring buffer, const char* message, va_list varg );
 void lg_colorize( bstring str, enum LG_COLOR color );
 
