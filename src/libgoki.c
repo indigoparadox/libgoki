@@ -36,11 +36,11 @@ void lg_set_info_cb( lg_info_callback cb ) {
    lg_info_cb = cb;
 }
 
-int add_lg_trace_cat( const char* name, enum LG_COLOR color ) {
+int lg_add_trace_cat( const char* name, enum LG_COLOR color ) {
    int i = 0;
 
    for( i = 0 ; LG_CAT_MAX > i ; i++ ) {
-      if( NULL != lg_categories[i].name ) {
+      if( NULL == lg_categories[i].name ) {
          lg_categories[i].color = color;
          lg_categories[i].name = name;
          lg_categories[i].index = i;
@@ -56,18 +56,27 @@ int add_lg_trace_cat( const char* name, enum LG_COLOR color ) {
    return i;
 }
 
+const char* lg_get_trace_cat_name() {
+   if( 0 > lg_trace_cat_index ) {
+      return NULL;
+   }
+   return lg_categories[lg_trace_cat_index].name;
+}
 
-int set_lg_trace_cat( const char* name ) {
+int lg_set_trace_cat( const char* name ) {
    int i = 0;
 
    for( i = 0 ; LG_CAT_MAX > i ; i++ ) {
+      if( NULL == lg_categories[i].name ) {
+         break;
+      }
       if( 0 == strcmp( name, lg_categories[i].name ) ) {
          break;
       }
    }
 
    /* Return -1 if we're out of slots. */
-   if( LG_CAT_MAX <= i ) {
+   if( LG_CAT_MAX <= i || NULL == lg_categories[i].name ) {
       i = -1;
    } else {
       lg_trace_cat_index = i;
@@ -76,38 +85,74 @@ int set_lg_trace_cat( const char* name ) {
    return i;
 }
 
+bstring lg_trim_filename( bstring path ) {
+   bstring mod_file_b = NULL;
+   int bstr_ret = 0,
+      mod_b_len = 0;
+
+   mod_b_len = blength( path );
+   bstr_ret = bstrrchrp( path, '/', mod_b_len - 1 );
+   mod_file_b = bstrcpy( path );
+   if( 0 < bstr_ret ) {
+      bassignmidstr( mod_file_b, path, bstr_ret + 1, mod_b_len );
+   } else {
+      bstr_ret = bstrrchrp( path, '\\', mod_b_len - 1 );
+      if( 0 < bstr_ret ) {
+         bassignmidstr( mod_file_b, path, bstr_ret + 1, mod_b_len );
+      }
+   }
+
+   return mod_file_b;
+}
+
 static void lg_log(
    void* log, const char* mod_in, enum LG_COLOR color,
    const char* message, va_list varg
 ) {
-   int bstr_ret;
+   int bstr_ret = 0;
+   bstring mod_b = NULL;
+   bstring mod_file_b = NULL;
+
+   lgc_silence();
 
    if( NULL == lg_buffer ) {
       lg_buffer = bfromcstralloc( LG_BUFFER_ALLOC, "" );
    }
+
+   mod_b = bfromcstr( mod_in );
+   mod_file_b = lg_trim_filename( mod_b );
+
 #ifdef DEBUG
    assert( NULL != lg_buffer );
 #endif /* DEBUG */
 
+   /* TODO: Silence first! */
    bstr_ret = btrunc( lg_buffer, 0 );
    lgc_nonzero( bstr_ret );
 
 #ifdef DEBUG
-   scaffold_snprintf(
-      lg_buffer, "%s (%b): ",
-      lg_categories[lg_trace_cat_index].name
-   );
-   lg_vsnprintf( lg_buffer, message, varg );
-#else
-   scaffold_snprintf( lg_buffer, "%b: ", mod_in );
-   lg_vsnprintf( lg_buffer, message, varg );
+   if( 0 <= lg_trace_cat_index ) {
+      lg_snprintf(
+         lg_buffer, "%b: %s: ",
+         mod_file_b, lg_categories[lg_trace_cat_index].name
+      );
+   } else {
 #endif /* DEBUG */
+      lg_snprintf( lg_buffer, "%b: ", mod_file_b );
+#ifdef DEBUG
+   }
+#endif /* DEBUG */
+   lg_vsnprintf( lg_buffer, message, varg );
 
    lg_colorize( lg_buffer, color );
+
+   lgc_unsilence();
 
    fprintf( log, "%s", bdata( lg_buffer ) );
 
 cleanup:
+   bdestroy( mod_b );
+   bdestroy( mod_file_b );
    return;
 }
 
@@ -151,6 +196,13 @@ void lg_color(
 void lg_info( const char* mod_in, const char* message, ... ) {
    va_list varg;
    int bstr_ret;
+   bstring mod_b = NULL;
+   bstring mod_file_b = NULL;
+
+   lgc_silence();
+
+   mod_b = bfromcstr( mod_in );
+   mod_file_b = lg_trim_filename( mod_b );
 
    if( NULL == lg_buffer ) {
       lg_buffer = bfromcstralloc( LG_PRINT_BUFFER_ALLOC, "" );
@@ -167,7 +219,7 @@ void lg_info( const char* mod_in, const char* message, ... ) {
    va_end( varg );
 
 #ifdef DEBUG
-   fprintf( lg_handle_out, "%s: %s", mod_in, bdata( lg_buffer ) );
+   fprintf( lg_handle_out, "%s: %s", bdata( mod_file_b ), bdata( lg_buffer ) );
 #endif /* DEBUG */
 
    if( NULL != lg_info_cb ) {
@@ -175,6 +227,9 @@ void lg_info( const char* mod_in, const char* message, ... ) {
    }
 
 cleanup:
+   bdestroy( mod_b );
+   bdestroy( mod_file_b );
+   lgc_unsilence();
    return;
 }
 
@@ -208,6 +263,13 @@ void scaffold_snprintf( bstring buffer, const char* message, ... ) {
    va_end( varg );
 }
 */
+
+void lg_snprintf( bstring buffer, const char* message, ... ) {
+   va_list varg;
+   va_start( varg, message );
+   lg_vsnprintf( buffer, message, varg );
+   va_end( varg );
+}
 
 void lg_vsnprintf( bstring buffer, const char* message, va_list varg ) {
    const char* chariter;
@@ -294,7 +356,7 @@ void lg_vsnprintf( bstring buffer, const char* message, va_list varg ) {
       }
    }
 
-cleanup:
+/* cleanup: */
    bdestroy( insert );
    return;
 }
